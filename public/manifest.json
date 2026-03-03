@@ -1,0 +1,21 @@
+{
+  "name": "Órion Lab",
+  "short_name": "Órion",
+  "description": "Laboratório de Arquitetura Teológica",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F1117",
+  "theme_color": "#C8A74E",
+  "icons": [
+    {
+      "src": "https://picsum.photos/seed/orion/192/192",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://picsum.photos/seed/orion/512/512",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
