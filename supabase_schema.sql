@@ -3,6 +3,19 @@
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Profiles Table
+CREATE TABLE IF NOT EXISTS profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    full_name TEXT,
+    avatar_url TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Storage setup (Run these in Supabase SQL Editor if needed)
+-- INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true);
+-- CREATE POLICY "Avatar images are publicly accessible." ON storage.objects FOR SELECT USING (bucket_id = 'avatars');
+-- CREATE POLICY "Anyone can upload an avatar." ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars');
+
 -- Series Table
 CREATE TABLE IF NOT EXISTS series (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

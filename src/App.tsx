@@ -13,7 +13,7 @@ const ManageView = React.lazy(() => import('./components/ManageView').then(m => 
 const StructuralMap = React.lazy(() => import('./components/StructuralMap').then(m => ({ default: m.StructuralMap })));
 
 export default function App() {
-  const { user, isLoading, setLoading } = useAuthStore();
+  const { user, isLoading, setLoading, initialize } = useAuthStore();
   const { ideas, syncWithSupabase } = useLabStore();
   const [activeView, setActiveView] = useState<'lab' | 'manage'>('lab');
   const [isMapOpen, setIsMapOpen] = useState(false);
@@ -21,6 +21,9 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
+    // Initialize Auth
+    initialize();
+
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
     const handleBeforeInstallPrompt = (e: any) => {
@@ -65,6 +68,10 @@ export default function App() {
         </motion.div>
       </div>
     );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
   }
 
   return (
@@ -140,6 +147,12 @@ export default function App() {
               </button>
               <button className="p-2 hover:bg-border rounded-full transition-colors">
                 <Settings className="w-4 h-4 text-text-secondary" />
+              </button>
+              <button 
+                onClick={() => useAuthStore.getState().signOut()}
+                className="p-2 hover:bg-border rounded-full transition-colors group"
+              >
+                <LogOut className="w-4 h-4 text-text-secondary group-hover:text-red-500 transition-colors" />
               </button>
             </div>
           </div>

@@ -99,5 +99,44 @@ export const supabaseService = {
       .delete()
       .eq('id', id);
     if (error) throw error;
+  },
+
+  async getProfile(userId: string) {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  },
+
+  async updateProfile(profile: any) {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from('profiles')
+      .upsert(profile);
+    if (error) throw error;
+  },
+
+  async uploadAvatar(userId: string, file: File) {
+    if (!supabase) return null;
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${userId}-${Math.random()}.${fileExt}`;
+    const filePath = `avatars/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(filePath);
+
+    return publicUrl;
   }
 };
