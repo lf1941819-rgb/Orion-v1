@@ -4,6 +4,8 @@ import { Send, Loader2, Sparkles } from 'lucide-react';
 import { useLabStore } from '../store/labStore';
 import { analyzeIdea } from '../services/geminiService';
 
+import { generateUUID } from '../utils/uuid';
+
 export const CaosInput = React.memo(() => {
   const [text, setText] = useState('');
   const { isAnalyzing, setAnalyzing, addIdea } = useLabStore();
@@ -16,23 +18,23 @@ export const CaosInput = React.memo(() => {
       const result = await analyzeIdea(text);
       
       const newIdea = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         input_text: text,
         input_type: result.detected.input_type,
         detected_verse_ref: result.detected.detected_verse_ref,
         created_at: new Date().toISOString(),
         analysis: {
-          id: crypto.randomUUID(),
+          id: generateUUID(),
           ...result.detected,
           ...result.structure,
           keywords: result.detected.keywords,
           warnings: result.warnings || []
         },
         questions: [
-          ...result.questions.structural.map((q: string) => ({ id: crypto.randomUUID(), kind: 'structural', question: q, status: 'open' })),
-          ...result.questions.tension.map((q: string) => ({ id: crypto.randomUUID(), kind: 'tension', question: q, status: 'open' })),
-          ...result.questions.axis.map((q: string) => ({ id: crypto.randomUUID(), kind: 'axis', question: q, status: 'open' })),
-          ...(result.questions.exegetical || []).map((q: string) => ({ id: crypto.randomUUID(), kind: 'exegetical', question: q, status: 'open' })),
+          ...result.questions.structural.map((q: string) => ({ id: generateUUID(), kind: 'structural', question: q, status: 'open' })),
+          ...result.questions.tension.map((q: string) => ({ id: generateUUID(), kind: 'tension', question: q, status: 'open' })),
+          ...result.questions.axis.map((q: string) => ({ id: generateUUID(), kind: 'axis', question: q, status: 'open' })),
+          ...(result.questions.exegetical || []).map((q: string) => ({ id: generateUUID(), kind: 'exegetical', question: q, status: 'open' })),
         ]
       };
       

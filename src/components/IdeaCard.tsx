@@ -4,6 +4,8 @@ import { Idea, Question, useLabStore, Connection, Series, Episode } from '../sto
 import { ChevronDown, ChevronUp, MessageSquare, ShieldAlert, Binary, BookOpen, Link2, Share2, X, Plus, FolderPlus } from 'lucide-react';
 import { clsx } from 'clsx';
 
+import { generateUUID } from '../utils/uuid';
+
 interface IdeaCardProps {
   idea: Idea;
 }
@@ -298,7 +300,7 @@ const ConnectionsTab = ({ ideaId, connections }: { ideaId: string, connections?:
   const handleAdd = () => {
     if (!target.trim()) return;
     addConnection(ideaId, {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       target,
       relation,
       note
