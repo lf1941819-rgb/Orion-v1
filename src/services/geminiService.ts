@@ -1,50 +1,94 @@
-export const analyzeIdea = async (text: string) => {
-  // Stub temporário - análise indisponível aguardando Edge Function
+import { supabase } from '../lib/supabase';
+
+// Fallback stub (quando Edge Function falha)
+function getStubResponse() {
   return {
     detected: {
-      input_type: "phrase",
+      input_type: "phrase" as const,
       detected_verse_ref: null,
-      claim_type: "ontological",
-      axis: "truth",
+      claim_type: "ontological" as const,
+      axis: "truth" as const,
       emotional_tone: "neutral",
       keywords: ["exemplo"]
     },
     structure: {
-      thesis: "Análise indisponível (aguardando Edge Function).",
+      thesis: "Análise indisponível (modo local).",
       premises: [
-        "Premissa de exemplo 1.",
-        "Premissa de exemplo 2."
+        "Serviço de análise temporariamente indisponível.",
+        "Usando modo fallback seguro."
       ],
-      antithesis: "Antítese de exemplo.",
+      antithesis: "Análise não pôde ser processada.",
       implications: [
-        "Implicação de exemplo 1.",
-        "Implicação de exemplo 2."
+        "Consulte análise manual ou tente novamente.",
+        "Dados salvos localmente para revisão."
       ]
     },
     questions: {
       structural: [
-        "Qual a estrutura principal?",
-        "Como se organiza?",
-        "Quais os elementos centrais?"
+        "Como se estrutura esta entrada?",
+        "Qual o núcleo da ideia?",
+        "Quais elementos são primários?"
       ],
       tension: [
-        "Há conflitos internos?",
-        "Quais tensões aparecem?"
+        "Existem conflitos internos?",
+        "Há contradições aparentes?"
       ],
       axis: [
         "Como se relaciona com verdade?",
-        "Quais eixos são ativados?"
+        "Qual eixo é predominante?"
       ],
       biblical: [],
       exegetical: [
-        "Como interpretar este texto?",
-        "Quais referências bíblicas?",
-        "Qual o contexto histórico?"
+        "Como interpretar contextualmente?",
+        "Quais referências são sugeridas?"
       ]
     },
     connections_suggested: {
       notes: []
     },
-    warnings: []
+    warnings: ["EDGE_UNAVAILABLE"]
   };
+}
+
+export const analyzeIdea = async (text: string) => {
+  try {
+    // Chamar Edge Function
+    const { data, error } = await supabase.functions.invoke('analyze_idea', {
+      body: { text }
+    });
+
+    if (error) {
+      console.error("Edge Function error:", error);
+      // Retornar fallback se Edge Function falha
+      const stub = getStubResponse();
+      return stub;
+    }
+
+    // Se a resposta contém erro (ex: validation)
+    if (data?.error) {
+      console.warn("Edge Function returned error:", data.error);
+      const stub = getStubResponse();
+      return stub;
+    }
+
+    // Se a resposta é direto o resultado (sucesso)
+    if (data?.detected) {
+      return data;
+    }
+
+    // Se a resposta tem data wrapper (sucesso com wrapper)
+    if (data?.data?.detected) {
+      return data.data;
+    }
+
+    // Fallback caso resposta inesperada
+    console.warn("Unexpected Edge Function response format");
+    const stub = getStubResponse();
+    return stub;
+  } catch (error) {
+    console.error("analyzeIdea exception:", error);
+    // Em caso de exceção (offline, network, etc), retornar stub
+    const stub = getStubResponse();
+    return stub;
+  }
 };
