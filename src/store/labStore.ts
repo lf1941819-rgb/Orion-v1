@@ -38,9 +38,13 @@ export interface Episode {
 
 export interface Connection {
   id: string;
-  target: string;
   relation: string;
+  direction: 'out' | 'in';
+  from_idea_id: string;
+  to_idea_id: string;
+  to_verse_ref?: string;
   note?: string;
+  target_label: string;
 }
 
 export interface Analysis {
@@ -77,8 +81,8 @@ interface LabState {
   setActiveIdea: (id: string | null) => void;
   setAnalyzing: (analyzing: boolean) => void;
   saveAnswer: (ideaId: string, questionId: string, answer: string) => Promise<void>;
-  addConnection: (ideaId: string, connection: Connection) => void;
-  removeConnection: (ideaId: string, connectionId: string) => void;
+  addConnection: (ideaId: string, connection: Omit<Connection, 'id'>) => Promise<void>;
+  removeConnection: (ideaId: string, connectionId: string) => Promise<void>;
   addSeries: (series: Series) => void;
   addEpisode: (episode: Episode) => void;
   updateSeries: (id: string, updates: Partial<Series>) => void;
@@ -126,26 +130,45 @@ export const useLabStore = create<LabState>()(
           console.error('Error saving answer:', error);
         }
       },
-      addConnection: (ideaId, connection) =>
-        set((state) => ({
-          ideas: state.ideas.map((idea) => {
-            if (idea.id !== ideaId) return idea;
-            return {
-              ...idea,
-              connections: [...(idea.connections || []), connection],
-            };
-          }),
-        })),
-      removeConnection: (ideaId, connectionId) =>
-        set((state) => ({
-          ideas: state.ideas.map((idea) => {
-            if (idea.id !== ideaId) return idea;
-            return {
-              ...idea,
-              connections: idea.connections?.filter((c) => c.id !== connectionId),
-            };
-          }),
-        })),
+      addConnection: async (ideaId, connectionData) => {
+        try {
+          const { target_label, ...dbData } = connectionData;
+          const persisted = await supabaseService.createConnection(dbData);
+          
+          const fullConnection: Connection = {
+            ...persisted,
+            target_label: target_label || persisted.to_verse_ref || '—'
+          };
+
+          set((state) => ({
+            ideas: state.ideas.map((idea) => {
+              if (idea.id !== ideaId) return idea;
+              return {
+                ...idea,
+                connections: [...(idea.connections || []), fullConnection],
+              };
+            }),
+          }));
+        } catch (error) {
+          console.error('Error adding connection:', error);
+        }
+      },
+      removeConnection: async (ideaId, connectionId) => {
+        try {
+          await supabaseService.deleteConnection(connectionId);
+          set((state) => ({
+            ideas: state.ideas.map((idea) => {
+              if (idea.id !== ideaId) return idea;
+              return {
+                ...idea,
+                connections: idea.connections?.filter((c) => c.id !== connectionId),
+              };
+            }),
+          }));
+        } catch (error) {
+          console.error('Error removing connection:', error);
+        }
+      },
       addSeries: (s) => set((state) => ({ series: [s, ...state.series] })),
       addEpisode: (e) => set((state) => ({ episodes: [e, ...state.episodes] })),
       updateSeries: (id, updates) =>
@@ -165,18 +188,46 @@ export const useLabStore = create<LabState>()(
       })),
       syncWithSupabase: async () => {
         if (!supabase) return;
-        const state = useLabStore.getState();
-        if (state.isAnalyzing) return; // Prevent sync while analyzing/creating
-
+        
         try {
-          const [series, episodes, ideas] = await Promise.all([
+          const [series, episodes, remoteIdeas] = await Promise.all([
             supabaseService.fetchSeries(),
             supabaseService.fetchEpisodes(),
-            supabaseService.fetchIdeas()
+            supabaseService.fetchIdeasForSync()
           ]);
           
-          // Merge logic to avoid overwriting in-progress local state if needed
-          set({ series, episodes, ideas });
+          set((state) => {
+            // Merge ideas carefully
+            const mergedIdeas = [...state.ideas];
+            
+            remoteIdeas.forEach((remote) => {
+              const localIndex = mergedIdeas.findIndex((i) => i.id === remote.id);
+              if (localIndex >= 0) {
+                // Update existing idea but preserve local flags
+                const local = mergedIdeas[localIndex];
+                mergedIdeas[localIndex] = {
+                  ...remote,
+                  // Preserve local-only state if we had any (none currently defined in interface, but good practice)
+                  // If we added "isAnalyzing" per idea, we'd preserve it here.
+                };
+              } else {
+                // Add new idea from remote
+                mergedIdeas.push(remote);
+              }
+            });
+
+            // Clean up: if an idea has an ID and is NOT in remoteIdeas, 
+            // it might have been deleted or we are just seeing the limit of 50.
+            // For now, we keep local ideas that are "isAnalyzing" or don't have an ID yet.
+            
+            return { 
+              series, 
+              episodes, 
+              ideas: mergedIdeas.sort((a, b) => 
+                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+              ) 
+            };
+          });
         } catch (error) {
           console.error('Error syncing with Supabase:', error);
         }
