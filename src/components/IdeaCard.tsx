@@ -300,10 +300,13 @@ const ConnectionsTab = ({ ideaId, connections }: { ideaId: string, connections?:
   const handleAdd = () => {
     if (!target.trim()) return;
     addConnection(ideaId, {
-      id: generateUUID(),
-      target,
       relation,
-      note
+      direction: 'out',
+      from_idea_id: ideaId,
+      to_idea_id: '', // Manual connection doesn't necessarily have a target idea ID yet
+      to_verse_ref: target.includes(':') ? target : undefined,
+      note,
+      target_label: target
     });
     setTarget('');
     setNote('');
@@ -389,7 +392,7 @@ const ConnectionsTab = ({ ideaId, connections }: { ideaId: string, connections?:
               <X className="w-3 h-3" />
             </button>
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-bold text-accent">{conn.target}</span>
+              <span className="text-xs font-bold text-accent">{conn.target_label}</span>
               <span className="text-[10px] uppercase px-1.5 py-0.5 bg-border rounded text-text-secondary">
                 {conn.relation}
               </span>

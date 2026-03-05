@@ -24,50 +24,72 @@ export const supabaseService = {
     return data as Episode[];
   },
 
-  async fetchIdeas() {
+  async fetchIdeasForSync() {
     if (!supabase) return [];
+    
     const { data, error } = await supabase
       .from('ideas')
       .select(`
         *,
-        analysis:analyses(*),
-        questions(*),
-        connections_out:connections!connections_from_idea_id_fkey(
+        analysis:analysis (
           *,
-          to_idea:ideas!connections_to_idea_id_fkey(input_text)
+          questions:questions (*)
         ),
-        connections_in:connections!connections_to_idea_id_fkey(
+        connections_out:connections!connections_from_idea_id_fkey (
           *,
-          from_idea:ideas!connections_from_idea_id_fkey(input_text)
+          to_idea:ideas (id, input_text, detected_verse_ref)
+        ),
+        connections_in:connections!connections_to_idea_id_fkey (
+          *,
+          from_idea:ideas (id, input_text, detected_verse_ref)
         )
       `)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(50);
     
-    if (error) throw error;
+    if (error) {
+      console.error('Error in fetchIdeasForSync:', error);
+      throw error;
+    }
     
-    // Normalize connections for the UI
-    const normalizedData = (data || []).map((idea: any) => ({
-      ...idea,
-      analysis: idea.analysis?.[0] || null,
-      questions: (idea.questions || []).map((q: any) => ({
+    // Normalize data for the UI
+    const normalizedData = (data || []).map((idea: any) => {
+      const analysis = idea.analysis?.[0] || null;
+      const questions = (analysis?.questions || []).map((q: any) => ({
         ...q,
         user_answer: q.user_notes // Map DB field to UI field
-      })),
-      connections: [
+      }));
+
+      const connections = [
         ...(idea.connections_out || []).map((c: any) => ({
           id: c.id,
           relation: c.relation,
+          direction: 'out',
+          from_idea_id: c.from_idea_id,
+          to_idea_id: c.to_idea_id,
+          to_verse_ref: c.to_verse_ref,
           note: c.note,
-          target: c.to_verse_ref || c.to_idea?.input_text || 'Ideia vinculada'
+          target_label: c.to_verse_ref || c.to_idea?.input_text || '—'
         })),
         ...(idea.connections_in || []).map((c: any) => ({
           id: c.id,
           relation: c.relation,
+          direction: 'in',
+          from_idea_id: c.from_idea_id,
+          to_idea_id: c.to_idea_id,
+          to_verse_ref: c.to_verse_ref,
           note: c.note,
-          target: c.from_idea?.input_text || 'Ideia vinculada'
+          target_label: c.from_idea?.input_text || '—'
         }))
-      ]
-    }));
+      ];
+
+      return {
+        ...idea,
+        analysis,
+        questions,
+        connections
+      };
+    });
 
     return normalizedData as Idea[];
   },
@@ -144,6 +166,33 @@ export const supabaseService = {
 
     if (error) throw error;
     return data;
+  },
+
+  async createConnection(connection: any) {
+    if (!supabase) throw new Error('Supabase not initialized');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('NOT_AUTHENTICATED');
+
+    const { data, error } = await supabase
+      .from('connections')
+      .insert({
+        ...connection,
+        owner_id: user.id
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteConnection(id: string) {
+    if (!supabase) throw new Error('Supabase not initialized');
+    const { error } = await supabase
+      .from('connections')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
   },
 
   async saveSeries(series: Series) {

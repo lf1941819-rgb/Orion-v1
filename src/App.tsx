@@ -72,15 +72,18 @@ export default function App() {
     window.addEventListener('offline', handleOffline);
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     
-    // Sync with Supabase if available
-    syncWithSupabase();
-    
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      syncWithSupabase();
+    }
+  }, [user, syncWithSupabase]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
