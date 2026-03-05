@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabaseClient';
 import { Idea, Series, Episode } from '../store/labStore';
 
 export const supabaseService = {

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabaseClient';
 import { supabaseService } from '../services/supabaseService';
 
 interface UserProfile {

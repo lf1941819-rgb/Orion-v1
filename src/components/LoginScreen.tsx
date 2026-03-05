@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { OrionLogo } from './Brand';
 import { Mail, Instagram, Phone, Loader2, Camera, User, ArrowRight, Facebook } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabaseClient';
 import { useAuthStore } from '../store/authStore';
 import { supabaseService } from '../services/supabaseService';
 

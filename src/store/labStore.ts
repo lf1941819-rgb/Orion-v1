@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabaseService } from '../services/supabaseService';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabaseClient';
 
 export interface Idea {
   id: string;
@@ -169,6 +169,11 @@ export const useLabStore = create<LabState>()(
     }),
     {
       name: 'orion-lab-storage',
+      partialize: (state) => ({
+        ideas: state.ideas,
+        series: state.series,
+        episodes: state.episodes,
+      }),
     }
   )
 );
