@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabaseService } from '../services/supabaseService';
 import { supabase } from '../lib/supabaseClient';
+import { analyzeIdea, normalizeAnalysisPayload } from '../services/geminiService';
 
 export interface Idea {
   id: string;
@@ -53,6 +54,7 @@ export interface Analysis {
   implications: string[];
   keywords: string[];
   warnings: string[];
+  biblical_links?: any[];
 }
 
 export interface Question {
@@ -74,7 +76,7 @@ interface LabState {
   updateIdea: (id: string, updates: Partial<Idea>) => void;
   setActiveIdea: (id: string | null) => void;
   setAnalyzing: (analyzing: boolean) => void;
-  saveAnswer: (ideaId: string, questionId: string, answer: string) => void;
+  saveAnswer: (ideaId: string, questionId: string, answer: string) => Promise<void>;
   addConnection: (ideaId: string, connection: Connection) => void;
   removeConnection: (ideaId: string, connectionId: string) => void;
   addSeries: (series: Series) => void;
@@ -84,6 +86,7 @@ interface LabState {
   deleteSeries: (id: string) => void;
   deleteEpisode: (id: string) => void;
   syncWithSupabase: () => Promise<void>;
+  createIdeaWithAnalysis: (inputText: string, options?: { series_id?: string; episode_id?: string }) => Promise<void>;
 }
 
 export const useLabStore = create<LabState>()(
@@ -102,20 +105,27 @@ export const useLabStore = create<LabState>()(
         })),
       setActiveIdea: (id) => set({ activeIdeaId: id }),
       setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
-      saveAnswer: (ideaId, questionId, answer) =>
-        set((state) => ({
-          ideas: state.ideas.map((idea) => {
-            if (idea.id !== ideaId) return idea;
-            return {
-              ...idea,
-              questions: idea.questions?.map((q) =>
-                q.id === questionId
-                  ? { ...q, user_answer: answer, status: 'answered' as const }
-                  : q
-              ),
-            };
-          }),
-        })),
+      saveAnswer: async (ideaId, questionId, answer) => {
+        try {
+          await supabaseService.updateQuestion(questionId, { user_answer: answer, status: 'answered' });
+          
+          set((state) => ({
+            ideas: state.ideas.map((idea) => {
+              if (idea.id !== ideaId) return idea;
+              return {
+                ...idea,
+                questions: idea.questions?.map((q) =>
+                  q.id === questionId
+                    ? { ...q, user_answer: answer, status: 'answered' as const }
+                    : q
+                ),
+              };
+            }),
+          }));
+        } catch (error) {
+          console.error('Error saving answer:', error);
+        }
+      },
       addConnection: (ideaId, connection) =>
         set((state) => ({
           ideas: state.ideas.map((idea) => {
@@ -155,15 +165,72 @@ export const useLabStore = create<LabState>()(
       })),
       syncWithSupabase: async () => {
         if (!supabase) return;
+        const state = useLabStore.getState();
+        if (state.isAnalyzing) return; // Prevent sync while analyzing/creating
+
         try {
           const [series, episodes, ideas] = await Promise.all([
             supabaseService.fetchSeries(),
             supabaseService.fetchEpisodes(),
             supabaseService.fetchIdeas()
           ]);
+          
+          // Merge logic to avoid overwriting in-progress local state if needed
           set({ series, episodes, ideas });
         } catch (error) {
           console.error('Error syncing with Supabase:', error);
+        }
+      },
+      createIdeaWithAnalysis: async (inputText, options = {}) => {
+        set({ isAnalyzing: true });
+        try {
+          // 1. Create Idea in DB
+          const ideaRow = await supabaseService.createIdea({
+            input_text: inputText,
+            input_type: 'phrase', // Default
+            ...options
+          });
+
+          // 2. Call Edge Function for Analysis
+          const analysisPayload = await analyzeIdea(inputText);
+
+          // 3. Normalize Payload
+          const { analysisRow, questionRows, detected } = normalizeAnalysisPayload(analysisPayload);
+
+          // 4. Update Idea with detected info if available
+          if (detected) {
+            await supabaseService.saveIdea({
+              ...ideaRow,
+              input_type: detected.input_type,
+              detected_verse_ref: detected.detected_verse_ref
+            });
+          }
+
+          // 5. Upsert Analysis
+          const persistedAnalysis = await supabaseService.upsertAnalysis(ideaRow.id, analysisRow);
+
+          // 6. Replace Questions
+          const persistedQuestions = await supabaseService.replaceQuestions(persistedAnalysis.id, questionRows);
+
+          // 7. Update Local State
+          const fullIdea: Idea = {
+            ...ideaRow,
+            input_type: detected?.input_type || ideaRow.input_type,
+            detected_verse_ref: detected?.detected_verse_ref || ideaRow.detected_verse_ref,
+            analysis: persistedAnalysis,
+            questions: persistedQuestions
+          };
+
+          set((state) => ({
+            ideas: [fullIdea, ...state.ideas.filter(i => i.id !== ideaRow.id)],
+            activeIdeaId: fullIdea.id,
+            isAnalyzing: false
+          }));
+
+        } catch (error) {
+          console.error('Error in createIdeaWithAnalysis:', error);
+          set({ isAnalyzing: false });
+          throw error;
         }
       },
     }),

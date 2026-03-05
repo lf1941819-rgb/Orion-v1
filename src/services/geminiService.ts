@@ -1,85 +1,102 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { supabase } from "../lib/supabaseClient";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+export interface AnalysisPayload {
+  detected?: {
+    input_type: string;
+    detected_verse_ref?: string;
+    claim_type: string;
+    axis: string;
+    emotional_tone: string;
+    keywords: string[];
+  };
+  structure?: {
+    thesis: string;
+    premises: string[];
+    antithesis: string;
+    implications: string[];
+  };
+  questions?: {
+    structural?: string[];
+    tension?: string[];
+    axis?: string[];
+    biblical?: Array<{ ref: string; question: string }> | string[];
+    exegetical?: string[];
+  } | string[]; // Can be simple array
+  warnings?: string[];
+}
 
-export const analyzeIdea = async (text: string) => {
-  const model = "gemini-3-flash-preview";
-  
-  const prompt = `
-    Analise a seguinte entrada teológica (pode ser um versículo, frase, pensamento ou narrativa).
-    Siga RIGOROSAMENTE as regras do ÓRION LAB:
-    1. NÃO gere sermão, mensagem ou aplicação longa.
-    2. Use linguagem observacional, nunca normativa.
-    3. Retorne APENAS um JSON válido.
-    4. Limites duros: tese/antítese <= 160 chars, premissas/implicações <= 120 chars, perguntas <= 180 chars.
-    5. Máximo de 5 premissas/implicações. Máximo de 8 perguntas por categoria.
-    6. Se detectar versículo, gere perguntas exegéticas.
-    
-    ENTRADA: "${text}"
-  `;
+export const normalizeAnalysisPayload = (payload: any) => {
+  const analysisRow = {
+    claim_type: payload.detected?.claim_type || 'mixed',
+    axis: payload.detected?.axis || 'mixed',
+    emotional_tone: payload.detected?.emotional_tone || 'mixed',
+    keywords: payload.detected?.keywords || [],
+    thesis: payload.structure?.thesis || payload.thesis || 'Análise em andamento...',
+    premises: payload.structure?.premises || payload.premises || [],
+    antithesis: payload.structure?.antithesis || payload.antithesis || '',
+    implications: payload.structure?.implications || payload.implications || [],
+    warnings: payload.warnings || [],
+    biblical_links: payload.biblical_links || []
+  };
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          detected: {
-            type: Type.OBJECT,
-            properties: {
-              input_type: { type: Type.STRING, description: "phrase|verse|question|narrative|mixed" },
-              detected_verse_ref: { type: Type.STRING, nullable: true },
-              claim_type: { type: Type.STRING, description: "ontological|juridical|narrative|pastoral|mixed" },
-              axis: { type: Type.STRING, description: "truth|justice|judgment|mixed" },
-              emotional_tone: { type: Type.STRING },
-              keywords: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ["input_type", "claim_type", "axis", "emotional_tone", "keywords"]
-          },
-          structure: {
-            type: Type.OBJECT,
-            properties: {
-              thesis: { type: Type.STRING },
-              premises: { type: Type.ARRAY, items: { type: Type.STRING } },
-              antithesis: { type: Type.STRING },
-              implications: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ["thesis", "premises", "antithesis", "implications"]
-          },
-          questions: {
-            type: Type.OBJECT,
-            properties: {
-              structural: { type: Type.ARRAY, items: { type: Type.STRING } },
-              tension: { type: Type.ARRAY, items: { type: Type.STRING } },
-              axis: { type: Type.ARRAY, items: { type: Type.STRING } },
-              biblical: { 
-                type: Type.ARRAY, 
-                items: { 
-                  type: Type.OBJECT,
-                  properties: {
-                    ref: { type: Type.STRING },
-                    question: { type: Type.STRING }
-                  }
-                } 
-              },
-              exegetical: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ["structural", "tension", "axis", "biblical"]
-          },
-          connections_suggested: {
-            type: Type.OBJECT,
-            properties: {
-              notes: { type: Type.ARRAY, items: { type: Type.STRING } }
-            }
-          },
-          warnings: { type: Type.ARRAY, items: { type: Type.STRING } }
-        },
-        required: ["detected", "structure", "questions"]
-      }
+  const questionRows: any[] = [];
+
+  if (payload.questions) {
+    if (Array.isArray(payload.questions)) {
+      // Simple array of questions
+      payload.questions.forEach((q: string) => {
+        questionRows.push({ kind: 'structural', question: q, priority: 3, status: 'open' });
+      });
+    } else {
+      // Structured questions
+      const qObj = payload.questions;
+      ['structural', 'tension', 'axis', 'biblical', 'exegetical'].forEach(kind => {
+        if (qObj[kind] && Array.isArray(qObj[kind])) {
+          qObj[kind].forEach((q: any) => {
+            const questionText = typeof q === 'string' ? q : (q.question || JSON.stringify(q));
+            questionRows.push({ kind, question: questionText, priority: 3, status: 'open' });
+          });
+        }
+      });
     }
-  });
+  }
 
-  return JSON.parse(response.text);
+  // Fallback if no questions
+  if (questionRows.length === 0) {
+    ['O que esta afirmação pressupõe?', 'Quais as implicações práticas?', 'Existe alguma tensão teológica aqui?'].forEach(q => {
+      questionRows.push({ kind: 'structural', question: q, priority: 3, status: 'open' });
+    });
+  }
+
+  return { analysisRow, questionRows, detected: payload.detected };
+};
+
+export const analyzeIdea = async (text: string): Promise<AnalysisPayload> => {
+  if (!supabase) throw new Error('Supabase not initialized');
+
+  try {
+    const { data, error } = await supabase.functions.invoke("analyze_idea", {
+      body: { text }
+    });
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Edge Function Error:', error);
+    // Fallback payload
+    return {
+      structure: {
+        thesis: text.substring(0, 160),
+        premises: [],
+        antithesis: "Análise indisponível no momento.",
+        implications: []
+      },
+      warnings: ["EDGE_UNAVAILABLE"],
+      questions: [
+        "Como este texto se relaciona com a soberania de Deus?",
+        "Qual o impacto desta verdade na vida cristã?",
+        "Como podemos aplicar este princípio hoje?"
+      ]
+    };
+  }
 };

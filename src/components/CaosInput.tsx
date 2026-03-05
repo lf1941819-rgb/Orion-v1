@@ -8,59 +8,17 @@ import { generateUUID } from '../utils/uuid';
 
 export const CaosInput = React.memo(() => {
   const [text, setText] = useState('');
-  const { isAnalyzing, setAnalyzing, addIdea } = useLabStore();
+  const { isAnalyzing, createIdeaWithAnalysis } = useLabStore();
 
   const handleAnalyze = async () => {
     if (!text.trim() || isAnalyzing) return;
     
-    setAnalyzing(true);
-    
-    // Safety timeout to prevent getting stuck
-    const timeoutId = setTimeout(() => {
-      if (useLabStore.getState().isAnalyzing) {
-        setAnalyzing(false);
-        console.error("Analysis timed out");
-      }
-    }, 30000); // 30 seconds timeout
-
     try {
-      const result = await analyzeIdea(text);
-      clearTimeout(timeoutId);
-      
-      const newIdea = {
-        id: generateUUID(),
-        input_text: text,
-        input_type: result.detected?.input_type || 'phrase',
-        detected_verse_ref: result.detected?.detected_verse_ref,
-        created_at: new Date().toISOString(),
-        analysis: {
-          id: generateUUID(),
-          claim_type: result.detected?.claim_type || 'mixed',
-          axis: result.detected?.axis || 'mixed',
-          emotional_tone: result.detected?.emotional_tone || 'neutral',
-          thesis: result.structure?.thesis || text,
-          antithesis: result.structure?.antithesis || '',
-          premises: result.structure?.premises || [],
-          implications: result.structure?.implications || [],
-          keywords: result.detected?.keywords || [],
-          warnings: result.warnings || []
-        },
-        questions: [
-          ...(result.questions?.structural || []).map((q: string) => ({ id: generateUUID(), kind: 'structural', question: q, status: 'open' })),
-          ...(result.questions?.tension || []).map((q: string) => ({ id: generateUUID(), kind: 'tension', question: q, status: 'open' })),
-          ...(result.questions?.axis || []).map((q: string) => ({ id: generateUUID(), kind: 'axis', question: q, status: 'open' })),
-          ...(result.questions?.biblical || []).map((q: any) => ({ id: generateUUID(), kind: 'biblical', question: `${q.ref}: ${q.question}`, status: 'open' })),
-          ...(result.questions?.exegetical || []).map((q: string) => ({ id: generateUUID(), kind: 'exegetical', question: q, status: 'open' })),
-        ]
-      };
-      
-      addIdea(newIdea as any);
+      await createIdeaWithAnalysis(text);
       setText('');
     } catch (error) {
-      clearTimeout(timeoutId);
       console.error("Analysis failed:", error);
-    } finally {
-      setAnalyzing(false);
+      // You might want to show a toast here
     }
   };
 
