@@ -6,8 +6,45 @@ import { LoginScreen } from './components/LoginScreen';
 import { CaosInput } from './components/CaosInput';
 import { IdeaCard } from './components/IdeaCard';
 import { OrionLogo, SectionDivider, LogoIcon } from './components/Brand';
-import { LayoutGrid, LogOut, Settings, Calendar, Wifi, WifiOff, FlaskConical, Database, Download } from 'lucide-react';
+import { LayoutGrid, LogOut, Settings, Calendar, Wifi, WifiOff, FlaskConical, Database, Download, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
+
+// Error Boundary Component
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("App Error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 text-center space-y-6">
+          <AlertTriangle className="w-12 h-12 text-red-500" />
+          <div className="space-y-2">
+            <h2 className="text-2xl font-display font-bold">Ops! Algo deu errado.</h2>
+            <p className="text-text-secondary text-sm">O aplicativo encontrou um erro inesperado.</p>
+          </div>
+          <button 
+            onClick={() => window.location.reload()}
+            className="btn-primary"
+          >
+            Recarregar Aplicativo
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const ManageView = React.lazy(() => import('./components/ManageView').then(m => ({ default: m.ManageView })));
 const StructuralMap = React.lazy(() => import('./components/StructuralMap').then(m => ({ default: m.StructuralMap })));
@@ -37,9 +74,6 @@ export default function App() {
     
     // Sync with Supabase if available
     syncWithSupabase();
-    
-    // Simulate initial load
-    setLoading(false);
     
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -71,11 +105,16 @@ export default function App() {
   }
 
   if (!user) {
-    return <LoginScreen />;
+    return (
+      <ErrorBoundary>
+        <LoginScreen />
+      </ErrorBoundary>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-bg text-text-primary">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-bg text-text-primary">
       {/* Top Logo Icon (Screenshot reference) */}
       <div className="fixed top-6 left-6 z-50">
         <LogoIcon className="w-10 h-10" />
@@ -256,5 +295,6 @@ export default function App() {
         <StructuralMap isOpen={isMapOpen} onClose={() => setIsMapOpen(false)} />
       </React.Suspense>
     </div>
+    </ErrorBoundary>
   );
 }
