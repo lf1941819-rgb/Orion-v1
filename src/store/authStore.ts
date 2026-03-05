@@ -14,6 +14,7 @@ interface AuthState {
   user: UserProfile | null;
   session: any | null;
   isLoading: boolean;
+  isInitialized: boolean;
   setUser: (user: UserProfile | null) => void;
   setSession: (session: any | null) => void;
   setLoading: (loading: boolean) => void;
@@ -28,6 +29,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       session: null,
       isLoading: true,
+      isInitialized: false,
       setUser: (user) => set({ user }),
       setSession: (session) => set({ session }),
       setLoading: (loading) => set({ isLoading: loading }),
@@ -38,31 +40,17 @@ export const useAuthStore = create<AuthState>()(
       },
 
       initialize: async () => {
-        if (!supabase) {
+        if (!supabase || get().isInitialized) {
           set({ isLoading: false });
           return;
         }
 
-        const { data: { session } } = await supabase.auth.getSession();
-        set({ session });
+        set({ isInitialized: true });
 
-        if (session?.user) {
-          try {
-            const profile = await supabaseService.getProfile(session.user.id);
-            set({ 
-              user: {
-                id: session.user.id,
-                email: session.user.email!,
-                ...profile
-              }
-            });
-          } catch (error) {
-            console.error('Error fetching profile:', error);
-          }
-        }
-
-        supabase.auth.onAuthStateChange(async (_event, session) => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
           set({ session });
+
           if (session?.user) {
             const profile = await supabaseService.getProfile(session.user.id);
             set({ 
@@ -72,9 +60,31 @@ export const useAuthStore = create<AuthState>()(
                 ...profile
               }
             });
-          } else {
-            set({ user: null });
           }
+        } catch (error) {
+          console.error('Error during initial session fetch:', error);
+        }
+
+        supabase.auth.onAuthStateChange(async (event, session) => {
+          set({ session });
+          
+          if (event === 'SIGNED_OUT') {
+            set({ user: null, session: null });
+          } else if (session?.user) {
+            try {
+              const profile = await supabaseService.getProfile(session.user.id);
+              set({ 
+                user: {
+                  id: session.user.id,
+                  email: session.user.email!,
+                  ...profile
+                }
+              });
+            } catch (error) {
+              console.error('Error fetching profile on auth change:', error);
+            }
+          }
+          
           set({ isLoading: false });
         });
 

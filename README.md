@@ -6,7 +6,6 @@
 - **Frontend**: React + Vite + Tailwind CSS + Zustand + Motion
 - **Backend/DB**: Supabase (Auth + Postgres + RLS)
 - **IA**: Gemini API (via @google/genai)
-- **Nota**: Gemini API Key não é usada no frontend; a integração será feita via Supabase Edge Functions.
 
 ## Como Rodar Localmente
 1. Instale as dependências: `npm install`
