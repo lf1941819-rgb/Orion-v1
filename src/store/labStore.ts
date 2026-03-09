@@ -246,22 +246,26 @@ export const useLabStore = create<LabState>()(
           const analysisPayload = await analyzeIdea(inputText);
 
           // 3. Normalize Payload
-          const { analysisRow, questionRows, detected } = normalizeAnalysisPayload(analysisPayload);
+          const { analysis, questions, detected } = normalizeAnalysisPayload(analysisPayload);
+
+          if (!analysis || !questions) {
+            throw new Error('Falha ao normalizar análise da IA');
+          }
 
           // 4. Update Idea with detected info if available
           if (detected) {
             await supabaseService.saveIdea({
               ...ideaRow,
-              input_type: detected.input_type,
-              detected_verse_ref: detected.detected_verse_ref
+              input_type: detected.input_type || ideaRow.input_type,
+              detected_verse_ref: detected.detected_verse_ref || ideaRow.detected_verse_ref
             });
           }
 
           // 5. Upsert Analysis
-          const persistedAnalysis = await supabaseService.upsertAnalysis(ideaRow.id, analysisRow);
+          const persistedAnalysis = await supabaseService.upsertAnalysis(ideaRow.id, analysis);
 
           // 6. Replace Questions
-          const persistedQuestions = await supabaseService.replaceQuestions(persistedAnalysis.id, questionRows);
+          const persistedQuestions = await supabaseService.replaceQuestions(persistedAnalysis.id, questions);
 
           // 7. Update Local State
           const fullIdea: Idea = {

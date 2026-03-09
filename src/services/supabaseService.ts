@@ -31,9 +31,9 @@ export const supabaseService = {
       .from('ideas')
       .select(`
         *,
-        analysis:analysis (
+        analysis:analyses (
           *,
-          questions:questions (*)
+          questions (*)
         ),
         connections_out:connections!connections_from_idea_id_fkey (
           *,
